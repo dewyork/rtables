@@ -76,6 +76,24 @@ rtabulate_default <- function(x, col_by = no_by("col_1"), FUN, ...,
                               col_wise_args = NULL) {
   
   force(FUN)
+  
+  has_nested_col_by <- if (is.list(col_by)) {
+    if (!all(vapply(col_by, is.factor, logical(1)))) {
+      stop("not all emelents in col_by are factors")
+    }
+    if (length(col_by) == 1) {
+      col_by <- col_by[[1]]
+      FALSE
+    } else {
+      col_by_in <- col_by
+      col_by_n <- vapply(col_by, nlevels, numeric(1))
+      col_by <- do.call(interaction, append(setNames(col_by, NULL), list( drop = FALSE, lex.order = TRUE)))
+      TRUE
+    }
+  } else {
+    FALSE
+  }
+  
   check_stop_col_by(col_by, col_wise_args)
   
   column_data <- if (is.no_by(col_by)) {
@@ -101,7 +119,27 @@ rtabulate_default <- function(x, col_by = no_by("col_1"), FUN, ...,
   
   rr <- rrowl(row.name = row.name, cells, format = format, indent = indent)
   
-  rtable(header = levels(col_by), rr)
+  
+  tbl_header <- if(has_nested_col_by) {
+    n_col <- nlevels(col_by)
+    n_rep <- head(cumprod(c(1, col_by_n)), -1)
+    n_span <- n_col / n_rep / col_by_n
+    col_by_names <- names(col_by_in)
+    if (is.null(col_by_names)) {
+      col_by_names <- rep("", length(col_by_in))
+    }
+    
+    
+    hrr <- Map(function(f, nr, ns, cbname) {
+      rrowl(cbname, lapply(rep(levels(f), times = nr), rcell, colspan = ns))
+    }, col_by_in, n_rep, n_span, col_by_names)
+    do.call(rheader, hrr)
+  } else {
+    levels(col_by)
+  }
+  
+  
+  rtable(header = tbl_header, rr)
 }
 
 
@@ -468,7 +506,6 @@ rtabulate.data.frame <- function(x,
   
   rtablel(header = levels(col_by), rrows)
 }
-
 
 
 check_stop_col_by <- function(col_by, col_wise_args = NULL) {
